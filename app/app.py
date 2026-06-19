@@ -3,11 +3,14 @@ import pandas as pd
 import os
 import plotly.express as px
 
+from database import (create_database,save_recommendation,get_history)
 from analyzer import analyze_student
+from mentor import get_mentor_advice
 from recommender import recommend_path
 from model import predict_next_score, risk_level
 
 st.set_page_config(page_title="AI Learning System", layout="wide")
+create_database()
 
 # 📊 Load data
 data_path = os.path.join(os.path.dirname(__file__), "..", "data", "student_performance.csv")
@@ -19,7 +22,8 @@ st.sidebar.title("Navigation")
 page = st.sidebar.radio("Go to", [
     "Dashboard",
     "Comparison",
-    "Recommendations"
+    "Recommendations",
+    "History"
 ])
 
 # 👤 Select student
@@ -84,7 +88,29 @@ if page == "Dashboard":
                 st.info(f"{sub} | Avg: {round(data['average'],2)} | {data['trend']}")
 
         i += 1
+    st.subheader("🤖 Learning Mentor")
 
+    goal_dashboard = st.selectbox(
+        "Career Goal",
+        [
+            "Data Scientist",
+            "AI Engineer",
+            "Software Engineer",
+            "Web Developer",
+            "Data Analyst"
+        ],
+        key="mentor_goal"
+    )
+
+    mentor_advice = get_mentor_advice(
+        weak_subject,
+        analysis[weak_subject]["trend"],
+        goal_dashboard
+    )
+
+    st.info(mentor_advice)
+
+    st.markdown("---")
 # ================= COMPARISON =================
 elif page == "Comparison":
 
@@ -104,24 +130,106 @@ elif page == "Comparison":
     st.plotly_chart(fig2, use_container_width=True)
 
 # ================= RECOMMENDATIONS =================
+# ================= RECOMMENDATIONS =================
 elif page == "Recommendations":
 
     st.title("📚 Learning Strategy")
 
-    recs, weak = recommend_path(analysis)
+    goal = st.selectbox(
+        "🎯 Career Goal",
+        [
+            "Data Scientist",
+            "AI Engineer",
+            "Software Engineer",
+            "Web Developer",
+            "Data Analyst"
+        ]
+    )
+
+    study_time = st.selectbox(
+        "⏳ Daily Study Time",
+        [
+            "1 Hour",
+            "2 Hours",
+            "4 Hours"
+        ]
+    )
+
+    recs, weak, roadmap = recommend_path(
+        analysis,
+        goal,
+        study_time
+    )
+    
+    roadmap_text = "\n".join(roadmap)
+
+    student_name = selected.split(" (ID")[0]
+
+    save_recommendation(
+        student_name,
+        student_id,
+        goal,
+        study_time,
+        weak,
+        roadmap_text
+    )
 
     st.warning(f"Focus most on: {weak}")
 
+    st.subheader("🗺 Personalized Learning Roadmap")
+
+    for step in roadmap:
+        st.success(step)
+
+    st.markdown("---")
+
     for r in recs:
+
         st.markdown(f"### 📘 {r['subject']}")
         st.write(f"**Topics:** {r['topics']}")
         st.write(f"**Action:** {r['action']}")
         st.write(f"[▶ Watch Video]({r['youtube']})")
 
-        file_path = os.path.join(os.path.dirname(__file__), "..", "resources", r["pdf"])
+        file_path = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "resources",
+            r["pdf"]
+        )
 
         if os.path.exists(file_path):
             with open(file_path, "rb") as f:
-                st.download_button("📥 Download Notes", f, file_name=r["pdf"])
+                st.download_button(
+                    "📥 Download Notes",
+                    f,
+                    file_name=r["pdf"]
+                )
 
         st.markdown("---")
+        
+elif page == "History":
+
+    st.title("📜 Recommendation History")
+
+    history = get_history()
+
+    if history:
+
+        history_df = pd.DataFrame(
+            history,
+            columns=[
+                "Student",
+                "Career Goal",
+                "Study Time",
+                "Weak Subject",
+                "Generated On"
+            ]
+        )
+
+        st.dataframe(
+            history_df,
+            use_container_width=True
+        )
+
+    else:
+        st.info("No recommendation history found.")
